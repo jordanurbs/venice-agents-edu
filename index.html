@@ -149,6 +149,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
 <li><a href="#prompt-caching">Prompt Caching</a></li>
 <li><a href="#models">Models Reference</a></li>
 <li><a href="#pricing">Pricing</a></li>
+<li><a href="#x402">X402 Wallet Payments (Agents)</a></li>
 <li><a href="#rate-limits">Rate Limits</a></li>
 <li><a href="#error-codes">Error Codes</a></li>
 <li><a href="#response-headers">Response Headers</a></li>
@@ -1406,6 +1407,170 @@ while True:
 <tr><td><strong>DIEM Staking</strong></td><td>Each DIEM = $1/day of credits that refresh daily.</td></tr>
 <tr><td><strong>Pro Subscription</strong></td><td>One-time $10 API credit when upgrading to Pro.</td></tr>
 </table>
+
+<!-- ───────────────────────────────────────── -->
+<h2 id="x402">X402 Wallet Payments (Agent-Friendly)</h2>
+
+<p><a href="https://www.x402.org/">X402</a> is an open standard for internet-native payments using the HTTP <code>402 Payment Required</code> status code. Venice supports X402 to let <strong>agents authenticate with a crypto wallet and pay for inference automatically</strong> — no API key required.</p>
+
+<h3>What X402 Enables</h3>
+<ul>
+<li><strong>Wallet auth instead of API keys</strong> — authenticate with a signed SIWE (Sign In With Ethereum) payload</li>
+<li><strong>Automatic payments</strong> — spend DIEM-backed balance or USDC on Base automatically during requests</li>
+<li><strong>Agent-friendly</strong> — autonomous agents can pay for their own compute without human intervention</li>
+</ul>
+
+<h3>Prerequisites</h3>
+<ul>
+<li>An EVM wallet on <strong>Base</strong> (Coinbase's L2) — Metamask, Phantom, Base Wallet, etc.</li>
+<li>USDC + gas funds on Base</li>
+<li>If you have staked DIEM, your daily DIEM inference is used first automatically</li>
+</ul>
+
+<div class="callout callout-important">
+<strong>Use a limited-purpose wallet</strong> — not your main treasury. The private key will be used for signing.
+</div>
+
+<h3>Supported Endpoints</h3>
+<table>
+<tr><th>Endpoint</th><th>Auth Header</th><th>Purpose</th></tr>
+<tr><td><code>POST /chat/completions</code></td><td><code>X-Sign-In-With-X</code></td><td>Paid inference (only endpoint currently supported)</td></tr>
+<tr><td><code>GET /x402/balance/{address}</code></td><td><code>X-Sign-In-With-X</code></td><td>Check spendable balance</td></tr>
+<tr><td><code>GET /x402/transactions/{address}</code></td><td><code>X-Sign-In-With-X</code></td><td>View transaction history</td></tr>
+<tr><td><code>POST /x402/top-up</code></td><td><code>X-402-Payment</code></td><td>Add USDC balance (different header!)</td></tr>
+</table>
+
+<h3>Auth Flow: Building X-Sign-In-With-X</h3>
+
+<p>Venice X402 uses a SIWE (Sign In With Ethereum) message, signed with EIP-191, then base64-encoded:</p>
+
+<pre><code>import { Wallet } from 'ethers'
+import { SiweMessage, generateNonce } from 'siwe'
+
+const signer = new Wallet(process.env.PRIVATE_KEY)
+
+const siwe = new SiweMessage({
+  domain: 'outerface.venice.ai',
+  address: signer.address,
+  statement: 'Sign in to Venice AI',
+  uri: 'https://outerface.venice.ai/api/v1/chat/completions',  // must match the route you're calling
+  version: '1',
+  chainId: 8453,   // Base
+  nonce: generateNonce(),
+  issuedAt: new Date().toISOString(),
+  expirationTime: new Date(Date.now() + 10 * 60 * 1000).toISOString(),  // 10 min
+})
+
+const message = siwe.prepareMessage()
+const signature = await signer.signMessage(message)
+
+const headerValue = Buffer.from(JSON.stringify({
+  address: signer.address.toLowerCase(),
+  message,
+  signature,
+  chainId: 8453,
+  timestamp: Date.now(),
+}), 'utf8').toString('base64')</code></pre>
+
+<div class="callout callout-important">
+<strong>The <code>uri</code> in the SIWE message must match the Venice route you're calling.</strong> Generate a fresh header for each different endpoint. Headers expire after 10 minutes.
+</div>
+
+<h3>Complete Agent Flow</h3>
+
+<h4>Step 1: Check balance</h4>
+<pre><code>curl -X GET "https://api.venice.ai/api/v1/x402/balance/0xYOUR_ADDRESS" \
+  -H "X-Sign-In-With-X: $BALANCE_AUTH"
+
+# Response:
+{
+  "success": true,
+  "data": {
+    "walletAddress": "0xyour_wallet_address",
+    "balanceUsd": 12.5,
+    "canConsume": true,
+    "minimumTopUpUsd": 5,
+    "suggestedTopUpUsd": 10,
+    "diemBalanceUsd": 5.25
+  }
+}</code></pre>
+
+<h4>Step 2: If canConsume is true, call inference</h4>
+<pre><code>curl -X POST https://api.venice.ai/api/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Sign-In-With-X: $CHAT_AUTH" \
+  -d '{
+    "model": "kimi-k2-5",
+    "messages": [{"role": "user", "content": "Hello from an x402-authenticated wallet."}]
+  }'</code></pre>
+
+<h4>Step 3: If balance is low, top up with USDC</h4>
+<pre><code># First call without payment header to get requirements:
+curl -X POST https://api.venice.ai/api/v1/x402/top-up
+# → 402 response with paymentInfo:
+{
+  "error": "PAYMENT_REQUIRED",
+  "message": "Send x402 payment via X-402-Payment header",
+  "paymentInfo": {
+    "receiverWallet": "0xRECEIVER_WALLET",
+    "network": "eip155:8453",
+    "token": "USDC",
+    "tokenAddress": "0xUSDC_TOKEN_ADDRESS",
+    "minimumAmountUsd": 5,
+    "suggestedAmountUsd": 10
+  }
+}
+
+# Then retry with signed X-402-Payment header:
+curl -X POST https://api.venice.ai/api/v1/x402/top-up \
+  -H "X-402-Payment: $X402_PAYMENT"
+# → {"success":true,"data":{"amountCredited":10,"newBalance":22.5}}</code></pre>
+
+<h4>Step 4: Check transaction history</h4>
+<pre><code>curl -X GET "https://api.venice.ai/api/v1/x402/transactions/0xYOUR_ADDRESS?limit=10&offset=0" \
+  -H "X-Sign-In-With-X: $TX_AUTH"</code></pre>
+<p>Returns entries like <code>TOP_UP</code>, <code>CHARGE</code>, <code>REFUND</code> with <code>requestId</code> and <code>modelId</code> for spend correlation.</p>
+
+<h3>Venice X402 Client Library</h3>
+<pre><code>npm install @venice-ai/x402-client</code></pre>
+
+<pre><code>import { VeniceClient } from '@venice-ai/x402-client'
+
+const venice = new VeniceClient(process.env.WALLET_KEY)
+
+const response = await venice.chat({
+  model: 'kimi-k2-5',
+  messages: [{ role: 'user', content: 'Hello!' }]
+})</code></pre>
+
+<h3>X402 Error Reference</h3>
+<table>
+<tr><th>Error</th><th>HTTP</th><th>Cause / Fix</th></tr>
+<tr><td><code>Authentication failed</code></td><td>401</td><td>Regenerate SIWE header. Check: valid base64, signature matches wallet, chain is 8453, not expired.</td></tr>
+<tr><td><code>Unauthorized</code></td><td>403</td><td>Wallet in header doesn't match <code>{address}</code> path parameter.</td></tr>
+<tr><td><code>Insufficient balance</code></td><td>402</td><td>Wallet auth worked but balance too low. Check <code>/x402/balance</code>, top up if needed.</td></tr>
+<tr><td><code>PAYMENT_REQUIRED</code></td><td>402</td><td>Expected on first top-up call. Use returned <code>paymentInfo</code> to build <code>X-402-Payment</code>.</td></tr>
+<tr><td><code>X402_INVALID_PAYMENT</code></td><td>400</td><td>Malformed payment header. Rebuild from scratch.</td></tr>
+</table>
+
+<h3>Prompt for Autonomous Agents</h3>
+<p>If you're sending an agent to use Venice via X402, give it this context:</p>
+<pre><code>Use the Venice API with your wallet.
+
+Auth: Build a SIWE message (domain: outerface.venice.ai, chain: 8453, URI: the Venice route
+you're calling), sign with EIP-191, base64-encode as JSON, send as X-Sign-In-With-X header.
+Headers expire after 10 minutes — regenerate per request.
+
+Inference: POST https://api.venice.ai/api/v1/chat/completions
+  Header: X-Sign-In-With-X: &lt;base64&gt;
+  Body: {"model":"kimi-k2-5","messages":[{"role":"user","content":"Hello"}]}
+
+Balance: GET https://api.venice.ai/api/v1/x402/balance/&lt;address&gt;
+Transactions: GET https://api.venice.ai/api/v1/x402/transactions/&lt;address&gt;
+DIEM staked on the wallet is used automatically. No DIEM = top up with USDC on Base (min $5).
+Guide: https://docs.venice.ai/overview/guides/x402-venice-api</code></pre>
+
+<p>Full documentation: <a href="https://docs.venice.ai/overview/guides/x402-venice-api">docs.venice.ai/overview/guides/x402-venice-api</a> | Client library: <a href="https://github.com/veniceai/x402-client">veniceai/x402-client</a></p>
 
 <!-- ───────────────────────────────────────── -->
 <h2 id="rate-limits">Rate Limits</h2>
