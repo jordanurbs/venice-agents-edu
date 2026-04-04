@@ -1678,20 +1678,272 @@ Guide: https://docs.venice.ai/overview/guides/x402-venice-api</code></pre>
 <!-- ───────────────────────────────────────── -->
 <h2 id="agent-frameworks">Agent Frameworks &amp; Integrations</h2>
 
-<h3>Supported Frameworks</h3>
+<h3>Migration from OpenAI — The 2-Line Change</h3>
+<p>Venice is a <strong>drop-in replacement</strong> for OpenAI. Same SDK, same code — just change two values:</p>
+<pre><code># Python
+client = OpenAI(
+    api_key="your-venice-api-key",           # ← Change 1
+    base_url="https://api.venice.ai/api/v1"  # ← Change 2
+)
+
+# Node.js
+const client = new OpenAI({
+  apiKey: 'your-venice-api-key',
+  baseURL: 'https://api.venice.ai/api/v1',
+});
+
+# Environment variables (many libraries auto-read these)
+OPENAI_API_KEY=your-venice-api-key
+OPENAI_BASE_URL=https://api.venice.ai/api/v1</code></pre>
+
+<h4>OpenAI → Venice Model Mapping</h4>
 <table>
-<tr><th>Framework</th><th>Integration</th></tr>
-<tr><td><a href="https://github.com/ai16z/eliza">Eliza (ai16z)</a></td><td>Set <code>modelProvider: "venice"</code> in character config. Configure <code>VENICE_API_KEY</code>, <code>SMALL_VENICE_MODEL</code>, <code>MEDIUM_VENICE_MODEL</code>, <code>LARGE_VENICE_MODEL</code>, <code>IMAGE_VENICE_MODEL</code> in <code>.env</code>.</td></tr>
-<tr><td><a href="https://www.coinbase.com/developer-platform/discover/launches/introducing-agentkit">Coinbase AgentKit</a></td><td>Native Venice support.</td></tr>
-<tr><td><a href="https://docs.openclaw.ai/providers/venice">OpenClaw</a></td><td>Open source AI assistant with Venice provider. See provider guide for setup.</td></tr>
-<tr><td>LangChain</td><td>Use <code>return_search_results_as_documents: true</code> for <code>venice_web_search_documents</code> tool call integration.</td></tr>
-<tr><td>Any OpenAI-compatible framework</td><td>Change <code>base_url</code> to <code>https://api.venice.ai/api/v1</code>.</td></tr>
+<tr><th>OpenAI Model</th><th>Venice Equivalent</th><th>Type</th><th>Pricing (In/Out per 1M)</th></tr>
+<tr><td>gpt-4o</td><td><code>zai-org-glm-4.7</code> <span class="badge badge-private">Private</span></td><td>Text</td><td>$0.55 / $2.65</td></tr>
+<tr><td>gpt-4o</td><td><code>openai-gpt-52</code> <span class="badge badge-anon">Anon</span></td><td>Text</td><td>$2.19 / $17.50</td></tr>
+<tr><td>gpt-4o-mini</td><td><code>qwen3-4b</code></td><td>Text</td><td>$0.05 / $0.15</td></tr>
+<tr><td>o1 / o3</td><td><code>qwen3-235b-a22b-thinking-2507</code></td><td>Reasoning</td><td>$0.45 / $3.50</td></tr>
+<tr><td>gpt-4-vision</td><td><code>qwen3-vl-235b-a22b</code></td><td>Vision</td><td>$0.25 / $1.50</td></tr>
+<tr><td>text-embedding-3-small</td><td><code>text-embedding-bge-m3</code></td><td>Embeddings</td><td>$0.15 / $0.60</td></tr>
+<tr><td>dall-e-3</td><td><code>qwen-image</code> <span class="badge badge-private">Private</span></td><td>Image</td><td>$0.01/img</td></tr>
+<tr><td>whisper</td><td><code>nvidia/parakeet-tdt-0.6b-v3</code></td><td>STT</td><td>$0.0001/sec</td></tr>
+<tr><td>tts-1</td><td><code>tts-kokoro</code></td><td>TTS</td><td>$3.50/1M chars</td></tr>
 </table>
 
-<h3>Eliza Setup (Quick)</h3>
+<h4>Framework Migration Quick Reference</h4>
+<table>
+<tr><th>Framework</th><th>Change Required</th></tr>
+<tr><td>LangChain</td><td><code>base_url</code> in <code>ChatOpenAI</code></td></tr>
+<tr><td>Vercel AI SDK</td><td><code>baseURL</code> in <code>createOpenAI</code></td></tr>
+<tr><td>CrewAI</td><td><code>OPENAI_API_BASE</code> env var</td></tr>
+<tr><td>LlamaIndex</td><td><code>api_base</code> in <code>OpenAI</code></td></tr>
+<tr><td>AutoGen</td><td><code>base_url</code> in config</td></tr>
+<tr><td>Haystack</td><td><code>api_base_url</code> in <code>OpenAIGenerator</code></td></tr>
+<tr><td>Claude Code</td><td>Use <a href="#claude-code">claude-code-router</a></td></tr>
+<tr><td>Cursor</td><td>Custom API endpoint in settings</td></tr>
+<tr><td>Continue.dev</td><td><code>apiBase</code> in config.json</td></tr>
+</table>
+
+<p>Full migration guide: <a href="https://docs.venice.ai/overview/guides/openai-migration">docs.venice.ai/overview/guides/openai-migration</a></p>
+
+<hr>
+
+<h3>LangChain</h3>
+
+<pre><code>pip install langchain langchain-openai openai</code></pre>
+
+<h4>Chat Model</h4>
+<pre><code>from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    model="venice-uncensored",
+    api_key="your-venice-api-key",
+    base_url="https://api.venice.ai/api/v1",
+    temperature=0.7,
+)
+
+response = llm.invoke("Explain privacy-preserving AI.")
+print(response.content)</code></pre>
+
+<h4>Embeddings</h4>
+<pre><code>from langchain_openai import OpenAIEmbeddings
+
+embeddings = OpenAIEmbeddings(
+    model="text-embedding-bge-m3",
+    api_key="your-venice-api-key",
+    base_url="https://api.venice.ai/api/v1",
+    check_embedding_ctx_length=False,  # Required for Venice
+)</code></pre>
+
+<h4>RAG Pipeline</h4>
+<pre><code>from langchain_community.vectorstores import FAISS
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+
+vectorstore = FAISS.from_texts(documents, embeddings)
+retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
+
+rag_prompt = ChatPromptTemplate.from_messages([
+    ("system", "Answer based only on this context:\n\n{context}"),
+    ("user", "{question}"),
+])
+
+rag_chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | rag_prompt | llm | StrOutputParser()
+)
+
+answer = rag_chain.invoke("What privacy levels does Venice offer?")</code></pre>
+
+<h4>Function Calling Agent</h4>
+<pre><code>from langchain_core.tools import tool
+from langchain.agents import create_tool_calling_agent, AgentExecutor
+
+llm = ChatOpenAI(model="zai-org-glm-4.7", api_key="...", base_url="https://api.venice.ai/api/v1")
+
+@tool
+def get_price(model_id: str) -> str:
+    """Get pricing for a Venice AI model."""
+    prices = {"venice-uncensored": "$0.20/$0.90", "zai-org-glm-4.7": "$0.55/$2.65"}
+    return prices.get(model_id, "Not found")
+
+agent = create_tool_calling_agent(llm, [get_price], prompt)
+executor = AgentExecutor(agent=agent, tools=[get_price])
+result = executor.invoke({"input": "What's the cheapest model?"})</code></pre>
+
+<h4>Web Search</h4>
+<pre><code>llm_with_search = ChatOpenAI(
+    model="venice-uncensored",
+    api_key="...",
+    base_url="https://api.venice.ai/api/v1",
+    extra_body={"venice_parameters": {"enable_web_search": "auto"}}
+)</code></pre>
+
+<p>Full guide: <a href="https://docs.venice.ai/overview/guides/langchain">docs.venice.ai/overview/guides/langchain</a></p>
+
+<hr>
+
+<h3>Vercel AI SDK</h3>
+
+<pre><code>npm install ai @ai-sdk/openai</code></pre>
+
+<h4>Provider Setup</h4>
+<pre><code>// lib/venice.ts
+import { createOpenAI } from '@ai-sdk/openai';
+
+const openai = createOpenAI({
+  apiKey: process.env.VENICE_API_KEY!,
+  baseURL: 'https://api.venice.ai/api/v1',
+});
+
+// Use .chat() to ensure compatibility with Venice's chat completions endpoint
+export const venice = (modelId: string) => openai.chat(modelId);</code></pre>
+
+<div class="callout callout-important">
+<strong>Use <code>.chat()</code></strong> — the default <code>openai('model')</code> syntax may use newer OpenAI endpoints Venice doesn't support yet.
+</div>
+
+<h4>Streaming Chat (Next.js App Router)</h4>
+<pre><code>// app/api/chat/route.ts
+import { streamText } from 'ai';
+import { venice } from '@/lib/venice';
+
+export async function POST(req: Request) {
+  const { messages } = await req.json();
+  const result = streamText({
+    model: venice('venice-uncensored'),
+    system: 'You are a helpful, privacy-respecting AI assistant.',
+    messages,
+  });
+  return result.toDataStreamResponse();
+}</code></pre>
+
+<h4>Tool Calling</h4>
+<pre><code>import { streamText, tool } from 'ai';
+import { z } from 'zod';
+
+const result = streamText({
+  model: venice('zai-org-glm-4.7'),
+  messages: [{ role: 'user', content: 'Weather in Tokyo?' }],
+  tools: {
+    getWeather: tool({
+      description: 'Get current weather',
+      parameters: z.object({ location: z.string() }),
+      execute: async ({ location }) => ({ temperature: 22, condition: 'Sunny', location }),
+    }),
+  },
+});</code></pre>
+
+<h4>Structured Output</h4>
+<pre><code>import { generateObject } from 'ai';
+import { z } from 'zod';
+
+const { object } = await generateObject({
+  model: venice('venice-uncensored'),
+  schema: z.object({
+    recipe: z.object({
+      name: z.string(),
+      ingredients: z.array(z.string()),
+      steps: z.array(z.string()),
+    }),
+  }),
+  prompt: 'Generate a recipe for chocolate chip cookies.',
+});</code></pre>
+
+<h4>Embeddings</h4>
+<pre><code>import { embed } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
+
+const openai = createOpenAI({
+  apiKey: process.env.VENICE_API_KEY!,
+  baseURL: 'https://api.venice.ai/api/v1',
+});
+
+const { embedding } = await embed({
+  model: openai.textEmbeddingModel('text-embedding-bge-m3'),
+  value: 'Privacy-first AI infrastructure',
+});</code></pre>
+
+<p>Full guide: <a href="https://docs.venice.ai/overview/guides/vercel-ai-sdk">docs.venice.ai/overview/guides/vercel-ai-sdk</a></p>
+
+<hr>
+
+<h3>OpenClaw</h3>
+
+<p><a href="https://openclaw.ai">OpenClaw</a> is an open-source AI gateway connecting messaging platforms (WhatsApp, Telegram, Discord, Slack, iMessage) to AI models. Venice is a built-in provider.</p>
+
+<pre><code># Install
+curl -fsSL https://openclaw.ai/install.sh | bash
+# Or: npm install -g openclaw@latest
+
+# Onboard (select Venice as provider, paste API key)
+openclaw onboard
+
+# Set model
+openclaw models set venice/zai-org-glm-5
+
+# Start
+openclaw tui          # Terminal UI
+openclaw dashboard    # Web dashboard
+openclaw gateway      # Messaging channels</code></pre>
+
+<h4>Recommended OpenClaw Models</h4>
+<table>
+<tr><th>Use Case</th><th>Model</th><th>Privacy</th></tr>
+<tr><td>General</td><td><code>venice/zai-org-glm-5</code></td><td><span class="badge badge-private">Private</span></td></tr>
+<tr><td>Reasoning</td><td><code>venice/kimi-k2-5</code></td><td><span class="badge badge-private">Private</span></td></tr>
+<tr><td>Coding</td><td><code>venice/claude-opus-4-6</code></td><td><span class="badge badge-anon">Anon</span></td></tr>
+<tr><td>Vision</td><td><code>venice/qwen3-vl-235b-a22b</code></td><td><span class="badge badge-private">Private</span></td></tr>
+<tr><td>Uncensored</td><td><code>venice/venice-uncensored</code></td><td><span class="badge badge-private">Private</span></td></tr>
+</table>
+
+<pre><code># Install image/video generation skill
+openclaw skills install nhannah/venice-ai-media</code></pre>
+
+<p>Full guide: <a href="https://docs.venice.ai/overview/guides/openclaw-bot">docs.venice.ai/overview/guides/openclaw-bot</a> | <a href="https://docs.openclaw.ai/providers/venice">OpenClaw Venice provider docs</a></p>
+
+<hr>
+
+<h3>Other Integrations</h3>
+<table>
+<tr><th>Integration</th><th>Type</th><th>Setup</th></tr>
+<tr><td><a href="https://github.com/ai16z/eliza">Eliza (ai16z)</a></td><td>Agent framework</td><td>Set <code>modelProvider: "venice"</code> in character config. Configure <code>VENICE_API_KEY</code> + model env vars.</td></tr>
+<tr><td><a href="https://www.coinbase.com/developer-platform/discover/launches/introducing-agentkit">Coinbase AgentKit</a></td><td>Agent framework</td><td>Native Venice support.</td></tr>
+<tr><td><a href="https://venice.ai/blog/how-to-code-with-the-venice-api-in-cursor-a-quick-guide">Cursor IDE</a></td><td>Coding</td><td>Custom API endpoint in settings.</td></tr>
+<tr><td><a href="https://venice.ai/blog/how-to-use-the-venice-api-with-cline-in-vscode-a-developers-guide">Cline (VS Code)</a></td><td>Coding</td><td>Set Venice base URL + API key.</td></tr>
+<tr><td><a href="https://venice.ai/blog/how-to-use-the-roo-ai-coding-assistant-in-private-with-venice-api-a-quick-guide">ROO Code (VS Code)</a></td><td>Coding</td><td>Set Venice base URL + API key.</td></tr>
+<tr><td><a href="https://venice.ai/blog/how-to-use-open-source-ai-code-editor-void-in-private-with-venice-api">VOID IDE</a></td><td>Coding</td><td>Set Venice base URL + API key.</td></tr>
+<tr><td><a href="https://venice.ai/blog/how-to-use-brave-leo-ai-with-venice-api-a-privacy-first-browser-ai-assistant">Brave Leo</a></td><td>Browser</td><td>Venice as Leo AI backend.</td></tr>
+<tr><td><a href="https://github.com/Aider-AI/aider">Aider</a></td><td>Coding</td><td>AI pair programming in terminal.</td></tr>
+<tr><td><a href="https://github.com/open-webui/open-webui">Open WebUI</a></td><td>Assistant</td><td>Self-hosted chat UI with Venice.</td></tr>
+<tr><td><a href="https://www.librechat.ai/">LibreChat</a></td><td>Assistant</td><td>Multi-provider chat with Venice.</td></tr>
+</table>
+
+<h4>Eliza Setup</h4>
 <pre><code>git clone https://github.com/ai16z/eliza.git
 cp .env.example .env
-# Edit .env: set VENICE_API_KEY and model selections
+# Edit .env: set VENICE_API_KEY, SMALL_VENICE_MODEL, MEDIUM_VENICE_MODEL, LARGE_VENICE_MODEL
 # Create character in /characters/your_char.character.json with modelProvider: "venice"
 pnpm i && pnpm build && pnpm start
 pnpm start --characters="characters/your_char.character.json"</code></pre>
