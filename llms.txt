@@ -1,0 +1,39 @@
+# Venice AI API — Complete Agent Reference
+
+> Single-page, token-optimized reference for the Venice AI API. Covers every endpoint, model, pitfall, and code example an AI agent needs. OpenAI SDK compatible — just change base_url to https://api.venice.ai/api/v1.
+
+## Quick Start
+
+- Base URL: `https://api.venice.ai/api/v1`
+- Auth: `Authorization: Bearer VENICE_API_KEY`
+- Get a key: https://venice.ai/settings/api
+
+## Reference
+
+- [Full Agent Reference](https://venice-agents-edu.netlify.app)
+- [Official Docs](https://docs.venice.ai)
+- [Swagger/OpenAPI](https://api.venice.ai/doc/api/swagger.yaml)
+- [Official llms.txt](https://docs.venice.ai/llms.txt)
+
+## Critical Agent Pitfalls
+
+- `GET /models` returns text models ONLY by default. Use `?type=image`, `?type=video`, `?type=tts`, `?type=embedding`, `?type=music` to discover other model types.
+- `?type=audio` returns ZERO models. The correct type for text-to-speech is `tts`.
+- STT models (`nvidia/parakeet-tdt-0.6b-v3`, `openai/whisper-large-v3`) do NOT appear in `/models` at all.
+- Image API uses `/image/generate` (NOT `/images/generations`). Response format differs from OpenAI.
+
+## Endpoints
+
+- `POST /chat/completions` — Text generation (OpenAI-compatible)
+- `POST /image/generate` — Image generation (Venice-specific)
+- `POST /image/upscale` — Image upscaling
+- `POST /image/edit` — Image inpainting
+- `POST /image/multi-edit` — Multi-image compositing
+- `POST /image/background-remove` — Background removal
+- `POST /audio/speech` — Text-to-speech (OpenAI-compatible)
+- `POST /audio/transcriptions` — Speech-to-text (OpenAI-compatible)
+- `POST /audio/queue` — Music generation (async)
+- `POST /video/queue` — Video generation (async)
+- `POST /embeddings` — Vector embeddings (OpenAI-compatible)
+- `GET /models` — List models (filter with `?type=`)
+- `GET /characters` — List AI character personas
