@@ -10,7 +10,7 @@
 
 ## Reference
 
-- [Full Agent Reference](https://venice-agents-edu.netlify.app)
+- [Full Agent Reference](https://docs.venice.ai/agent-reference.html)
 - [Official Docs](https://docs.venice.ai)
 - [Swagger/OpenAPI](https://api.venice.ai/doc/api/swagger.yaml)
 - [Official llms.txt](https://docs.venice.ai/llms.txt)
